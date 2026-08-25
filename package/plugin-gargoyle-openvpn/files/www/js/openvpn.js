@@ -450,6 +450,8 @@ function resetData()
 		return def
 	}
 
+	updateCertStatus()
+
 	document.getElementById("openvpn_server_ip").value = getServerVarWithDefault("internal_ip", "10.8.0.1")
 	document.getElementById("openvpn_server_mask").value = getServerVarWithDefault("internal_mask", "255.255.255.0")
 	document.getElementById("openvpn_server_port").value = getServerVarWithDefault("port", "1194")
@@ -1376,6 +1378,59 @@ function editAc(editRow,editId,serverInternalIp,serverInternalMask)
 		closeModalWindow('openvpn_allowed_client_modal');
 	}
 }
+// expiryIso is a "YYYY-MM-DDTHH:MM:SSZ" (UTC) string from the router; format it
+// in the browser's local time, honoring the user's date-format/hour-style prefs
+function formatExpiryTime(expiryIso)
+{
+	var expiryDate = new Date(expiryIso);
+	if(isNaN(expiryDate.getTime()))
+	{
+		return expiryIso;
+	}
+
+	var twod = function(num) { var nstr = "" + num; return nstr.length == 1 ? "0" + nstr : nstr; }
+	var y = expiryDate.getFullYear();
+	var m = twod(expiryDate.getMonth()+1);
+	var d = twod(expiryDate.getDate());
+
+	var systemDateFormat = uciOriginal.get("gargoyle", "global", "dateformat");
+	var datePart = (systemDateFormat == "" || systemDateFormat == "usa" || systemDateFormat == "iso") ? m+"/"+d+"/"+y : d+"/"+m+"/"+y;
+	datePart = systemDateFormat == "russia"  ? d+"."+m+"."+y : datePart;
+	datePart = systemDateFormat == "hungary" ? y+"."+m+"."+d : datePart;
+	datePart = systemDateFormat == "iso8601" ? y+"-"+m+"-"+d : datePart;
+
+	var timePart = cnv24hToLocal( twod(expiryDate.getHours())+":"+twod(expiryDate.getMinutes()) );
+
+	return datePart + " " + timePart;
+}
+
+function updateCertStatus()
+{
+	document.getElementById("openvpn_server_cert_expiry").innerHTML = haveServerCert ? formatExpiryTime(serverCertExpiry) : ovpnS.NotConf;
+	document.getElementById("openvpn_crl_expiry").innerHTML = haveCrl ? formatExpiryTime(crlExpiry) : ovpnS.NotConf;
+	document.getElementById("openvpn_renew_crl_button").disabled = !haveServerCert;
+}
+
+function renewCrl()
+{
+	var confirmed = confirm(ovpnS.CrlRenewC);
+	if(confirmed)
+	{
+		setControlsEnabled(false, true);
+
+		var commands = ". /usr/lib/gargoyle/openvpn.sh ; generate_crl ;"
+		var param = getParameterDefinition("commands", commands) + "&" + getParameterDefinition("hash", document.cookie.replace(/^.*hash=/,"").replace(/[\t ;]+.*$/, ""));
+		var stateChangeFunction = function(req)
+		{
+			if(req.readyState == 4)
+			{
+				window.location=window.location
+			}
+		}
+		runAjax("POST", "utility/run_commands.sh", param, stateChangeFunction);
+	}
+}
+
 function clearOpenvpnKeys()
 {
 	var confirmed = confirm(ovpnS.OClrC)

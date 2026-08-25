@@ -564,6 +564,66 @@ add_client_to_userlist()
 	[ -z $client_found ] && echo $client_id >> "$OPENVPN_DIR/verified-userlist"
 }
 
+# both mbedtls and openssl report certificate/CRL times in UTC -- these
+# helpers all emit plain ISO-8601 UTC ("YYYY-MM-DDTHH:MM:SSZ") so the
+# browser can unambiguously parse and convert to the viewer's local time
+month_num()
+{
+	case "$1" in
+		Jan) printf "01" ;;
+		Feb) printf "02" ;;
+		Mar) printf "03" ;;
+		Apr) printf "04" ;;
+		May) printf "05" ;;
+		Jun) printf "06" ;;
+		Jul) printf "07" ;;
+		Aug) printf "08" ;;
+		Sep) printf "09" ;;
+		Oct) printf "10" ;;
+		Nov) printf "11" ;;
+		Dec) printf "12" ;;
+	esac
+}
+
+# converts openssl's "-enddate"/"-nextupdate" output (e.g. "Dec 27 06:39:46 2037 GMT")
+# args are expected unquoted so the shell word-splits them into position
+openssl_date_to_iso()
+{
+	mon="$1"
+	day="$2"
+	time="$3"
+	year="$4"
+	printf "%s-%s-%02dT%sZ" "$year" "$(month_num "$mon")" "$day" "$time"
+}
+
+get_server_cert_expiry()
+{
+	certfile="$OPENVPN_DIR/server.crt"
+	if [ ! -f "$certfile" ] ; then
+		return
+	fi
+
+	if [ "$SSLVARIANT" = "mbedtls" ] ; then
+		mbedtls x509 -in "$certfile" -text -noout 2>/dev/null | awk -F': ' '/expires on/ { gsub(/ /, "T", $2) ; print $2"Z" }'
+	else
+		openssl_date_to_iso $(openssl x509 -in "$certfile" -noout -enddate 2>/dev/null | sed 's/^notAfter=//')
+	fi
+}
+
+get_crl_expiry()
+{
+	crlfile="$OPENVPN_DIR/crl.pem"
+	if [ ! -f "$crlfile" ] ; then
+		return
+	fi
+
+	if [ "$SSLVARIANT" = "mbedtls" ] ; then
+		mbedtls crl -in "$crlfile" -nextupdate -noout 2>/dev/null | sed 's/^nextUpdate=//; s/ UTC$//' | awk '{ gsub(/ /, "T") ; print $0"Z" }'
+	else
+		openssl_date_to_iso $(openssl crl -in "$crlfile" -noout -nextupdate 2>/dev/null | sed 's/^nextUpdate=//')
+	fi
+}
+
 generate_crl()
 {
 	random_dir_num=$(random_string)

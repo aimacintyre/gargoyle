@@ -44,6 +44,24 @@
 	echo "var tunIp=\""$(ifconfig tun0 2>/dev/null | awk ' { if ( $0 ~ /inet addr:/) { gsub(/^.*:/, "", $2) ; print $2 } }')"\";"
 	echo "var openvpnProc=\""$(ps | grep openvpn | grep -v grep | grep -v haserl | awk ' { printf $1 }')"\";"
 
+	. /usr/lib/gargoyle/openvpn.sh >/dev/null 2>&1
+
+	if [ -f "$OPENVPN_DIR/server.crt" ] ; then
+		echo "var haveServerCert = true;"
+		echo "var serverCertExpiry = \"$(get_server_cert_expiry)\";"
+	else
+		echo "var haveServerCert = false;"
+		echo "var serverCertExpiry = \"\";"
+	fi
+
+	if [ -f "$OPENVPN_DIR/crl.pem" ] ; then
+		echo "var haveCrl = true;"
+		echo "var crlExpiry = \"$(get_crl_expiry)\";"
+	else
+		echo "var haveCrl = false;"
+		echo "var crlExpiry = \"\";"
+	fi
+
 	tab=$(printf "\t")
 	config_file=$(uci get openvpn.custom_config.config 2>/dev/null)
 	remote_ping=""
@@ -201,6 +219,28 @@
 							<option value='true'><%~ ATrff %></option>
 							<option value='false'><%~ HTrff %></option>
 						</select>
+					</span>
+				</div>
+			</div>
+		</div>
+
+		<div class="panel panel-default">
+			<div class="panel-heading">
+				<h3 class="panel-title"><%~ CertSt %></h3>
+			</div>
+
+			<div class="panel-body">
+				<div class="row form-group">
+					<span class="col-xs-5"><%~ SrvCertExp %>:</span>
+					<span class="col-xs-7" id="openvpn_server_cert_expiry"></span>
+				</div>
+				<div class="row form-group">
+					<span class="col-xs-5"><%~ CrlExp %>:</span>
+					<span class="col-xs-7" id="openvpn_crl_expiry"></span>
+				</div>
+				<div class="row form-group">
+					<span class="col-xs-12">
+						<button id="openvpn_renew_crl_button" class="btn btn-default" onclick="renewCrl()"><%~ RenewCrl %></button>
 					</span>
 				</div>
 			</div>
